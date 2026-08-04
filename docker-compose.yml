@@ -104,3 +104,43 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+
+stream-worker:
+  build:
+    context: ./worker
+    dockerfile: Dockerfile.stream
+  container_name: stream-worker
+  environment:
+    - REDIS_URL=redis://redis:6379
+    - STREAM_NAME=sensor:stream
+    - DLQ_STREAM=sensor:dlq
+    - CONSUMER_GROUP=sensor-group
+    - MAX_RETRIES=3
+    - DB_HOST=postgres
+  volumes:
+    - ./worker:/app
+  networks:
+    - pipeline
+  depends_on:
+    - redis
+    - postgres
+  restart: unless-stopped
+  command: python stream_processor.py --mode worker
+
+replay-service:
+  build:
+    context: ./worker
+    dockerfile: Dockerfile.stream
+  container_name: replay-service
+  environment:
+    - REDIS_URL=redis://redis:6379
+    - STREAM_NAME=sensor:stream
+    - DLQ_STREAM=sensor:dlq
+    - DB_HOST=postgres
+  networks:
+    - pipeline
+  depends_on:
+    - redis
+    - postgres
+  restart: unless-stopped
+  command: python stream_processor.py --mode replay
