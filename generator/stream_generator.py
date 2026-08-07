@@ -18,10 +18,8 @@ class StreamGenerator:
     def __init__(self, redis_url="redis://localhost:6379", stream="sensor:stream"):
         self.redis = Redis.from_url(redis_url, decode_responses=True)
         self.stream = stream
-        self.running = False
     
     def generate_payload(self, device_id=None):
-        """Generate sensor payload"""
         if not device_id:
             device_id = f"O2P-{random.choice(['VIE','MIA'])}-ICU-{random.randint(1000,9999)}"
         
@@ -53,7 +51,6 @@ class StreamGenerator:
         }
     
     def publish(self, message):
-        """Publish message to Redis Stream"""
         try:
             msg_id = self.redis.xadd(
                 self.stream,
@@ -63,24 +60,21 @@ class StreamGenerator:
                     'first_seen': datetime.utcnow().isoformat()
                 }
             )
-            logger.debug(f"📤 Published: {msg_id}")
             return msg_id
         except Exception as e:
-            logger.error(f"❌ Failed to publish: {e}")
+            logger.error(f"Failed to publish: {e}")
             return None
     
     def run(self, interval=5, count=0):
-        """Run generator"""
-        self.running = True
-        logger.info(f"📡 Starting stream generator")
-        logger.info(f"   Stream: {self.stream}")
-        logger.info(f"   Interval: {interval}s")
-        
         device_id = f"O2P-{random.choice(['VIE','MIA'])}-ICU-{random.randint(1000,9999)}"
         published = 0
         
+        logger.info(f"📡 Starting stream generator")
+        logger.info(f"   Stream: {self.stream}")
+        print("Press Ctrl+C to stop")
+        
         try:
-            while self.running:
+            while True:
                 if count > 0 and published >= count:
                     break
                 
@@ -95,15 +89,14 @@ class StreamGenerator:
                 
         except KeyboardInterrupt:
             logger.info("🛑 Stopping generator")
-        finally:
-            self.running = False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stream", default="sensor:stream", help="Stream name")
-    parser.add_argument("--interval", type=int, default=5, help="Publish interval")
-    parser.add_argument("--count", type=int, default=0, help="Number of messages")
+    parser.add_argument("--redis-url", default="redis://localhost:6379")
+    parser.add_argument("--stream", default="sensor:stream")
+    parser.add_argument("--interval", type=int, default=5)
+    parser.add_argument("--count", type=int, default=0)
     args = parser.parse_args()
     
-    generator = StreamGenerator(stream=args.stream)
+    generator = StreamGenerator(redis_url=args.redis_url, stream=args.stream)
     generator.run(interval=args.interval, count=args.count)

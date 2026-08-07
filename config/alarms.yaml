@@ -1,92 +1,25 @@
-# Alarm configurations
 alarms:
+  - name: mqtt_down
+    metric: mqtt_health
+    period: 60
+    threshold: 0.5
+    comparison: lt
+    severity: critical
   - name: redis_down
     metric: redis_health
-    statistic: avg
     period: 60
     threshold: 0.5
     comparison: lt
-    dimensions:
-      component: redis
-    actions:
-      - slack
-      - email
     severity: critical
-
   - name: postgres_down
     metric: postgres_health
-    statistic: avg
     period: 60
     threshold: 0.5
     comparison: lt
-    dimensions:
-      component: postgres
-    actions:
-      - slack
-      - email
     severity: critical
-
-  - name: worker_down
-    metric: worker_health
-    statistic: avg
-    period: 60
-    threshold: 0.5
-    comparison: lt
-    dimensions:
-      component: worker
-    actions:
-      - slack
-      - email
-    severity: critical
-
-  # Performance
   - name: queue_backlog
     metric: redis_total_queue_size
-    statistic: avg
     period: 60
     threshold: 100
     comparison: gt
-    dimensions:
-      component: redis
-    actions:
-      - slack
     severity: warning
-
-  - name: high_error_rate
-    metric: worker_error_rate
-    statistic: avg
-    period: 60
-    threshold: 10
-    comparison: gt
-    dimensions:
-      component: worker
-    actions:
-      - slack
-      - email
-    severity: warning
-
-  # Data quality
-  - name: high_anomaly_rate
-    metric: postgres_recent_anomalies
-    statistic: sum
-    period: 300
-    threshold: 10
-    comparison: gt
-    dimensions:
-      component: postgres
-    actions:
-      - slack
-    severity: warning
-
-  - name: data_stagnation
-    metric: postgres_record_count
-    statistic: avg
-    period: 300
-    threshold: 0
-    comparison: eq
-    dimensions:
-      component: postgres
-    actions:
-      - slack
-      - email
-    severity: critical

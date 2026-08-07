@@ -1,16 +1,7 @@
 global:
   scrape_interval: 15s
-  evaluation_interval: 15s
 
 scrape_configs:
-  # Worker metrics
   - job_name: 'worker'
     static_configs:
       - targets: ['worker:8000']
-    metrics_path: '/metrics'
-
-  # RQ queue metrics (via redis_exporter)
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis:6379']
-    metrics_path: '/metrics'
