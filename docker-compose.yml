@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+
   redis:
     image: redis:7-alpine
     container_name: redis-queue
@@ -72,13 +73,17 @@ services:
     depends_on:
       - prometheus
 
-  worker:
+  stream-worker:
     build:
       context: ./worker
-      dockerfile: Dockerfile
-    container_name: rq-worker
+      dockerfile: Dockerfile.stream
+    container_name: stream-worker
     environment:
       - REDIS_URL=redis://redis:6379
+      - STREAM_NAME=sensor:stream
+      - DLQ_STREAM=sensor:dlq
+      - CONSUMER_GROUP=sensor-group
+      - MAX_RETRIES=3
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=oxygen_data
@@ -86,14 +91,58 @@ services:
       - DB_PASSWORD=pipeline123
     volumes:
       - ./worker:/app
-      - ./generator:/generator
     networks:
       - pipeline
     depends_on:
       - redis
       - postgres
     restart: unless-stopped
-    command: rq worker --url redis://redis:6379 default high low
+    command: python stream_processor.py --mode worker
+
+  replay-service:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.stream
+    container_name: replay-service
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - STREAM_NAME=sensor:stream
+      - DLQ_STREAM=sensor:dlq
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=oxygen_data
+      - DB_USER=pipeline
+      - DB_PASSWORD=pipeline123
+    volumes:
+      - ./worker:/app
+    networks:
+      - pipeline
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    command: python stream_processor.py --mode replay
+
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    container_name: pipeline-monitor
+    environment:
+      - REDIS_HOST=redis
+      - DB_HOST=postgres
+    volumes:
+      - ./scripts:/app/scripts
+      - ./logs:/var/log
+    networks:
+      - pipeline
+    depends_on:
+      - redis
+      - postgres
+      - mqtt
+      - stream-worker
+    restart: unless-stopped
+    command: python scripts/monitor.py --collect-interval 10 --alarm-interval 30
 
 networks:
   pipeline:
