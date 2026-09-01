@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-
   redis:
     image: redis:7-alpine
     container_name: redis-queue
@@ -33,7 +32,7 @@ services:
     environment:
       POSTGRES_USER: pipeline
       POSTGRES_PASSWORD: pipeline123
-      POSTGRES_DB: oxygen_data
+      POSTGRES_DB: baby_oil_data
     ports:
       - "5432:5432"
     volumes:
@@ -80,13 +79,13 @@ services:
     container_name: stream-worker
     environment:
       - REDIS_URL=redis://redis:6379
-      - STREAM_NAME=sensor:stream
-      - DLQ_STREAM=sensor:dlq
-      - CONSUMER_GROUP=sensor-group
+      - STREAM_NAME=babyoil:stream
+      - DLQ_STREAM=babyoil:dlq
+      - CONSUMER_GROUP=babyoil-group
       - MAX_RETRIES=3
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_NAME=oxygen_data
+      - DB_NAME=baby_oil_data
       - DB_USER=pipeline
       - DB_PASSWORD=pipeline123
     volumes:
@@ -106,15 +105,13 @@ services:
     container_name: replay-service
     environment:
       - REDIS_URL=redis://redis:6379
-      - STREAM_NAME=sensor:stream
-      - DLQ_STREAM=sensor:dlq
+      - STREAM_NAME=babyoil:stream
+      - DLQ_STREAM=babyoil:dlq
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_NAME=oxygen_data
+      - DB_NAME=baby_oil_data
       - DB_USER=pipeline
       - DB_PASSWORD=pipeline123
-    volumes:
-      - ./worker:/app
     networks:
       - pipeline
     depends_on:
@@ -143,6 +140,23 @@ services:
       - stream-worker
     restart: unless-stopped
     command: python scripts/monitor.py --collect-interval 10 --alarm-interval 30
+
+  generator:
+    build:
+      context: ./generator
+      dockerfile: Dockerfile
+    container_name: babyoil-generator
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MQTT_BROKER=mqtt
+      - MQTT_PORT=1883
+      - STREAM_NAME=babyoil:stream
+    networks:
+      - pipeline
+    depends_on:
+      - redis
+      - mqtt
+    restart: unless-stopped
 
 networks:
   pipeline:

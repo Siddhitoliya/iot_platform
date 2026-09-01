@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
+"""
+Health check for all pipeline components
+"""
 import socket
 import paho.mqtt.client as mqtt
 import redis
 import psycopg2
 import json
+import os
 from datetime import datetime
 
 def check_mqtt(host='localhost', port=1883):
@@ -23,7 +27,7 @@ def check_redis(host='localhost', port=6379):
     except Exception as e:
         return False, f"Redis down: {e}"
 
-def check_postgres(host='localhost', port=5432, db='oxygen_data', user='pipeline', password='pipeline123'):
+def check_postgres(host='localhost', port=5432, db='baby_oil_data', user='pipeline', password='pipeline123'):
     try:
         conn = psycopg2.connect(host=host, port=port, database=db, user=user, password=password, connect_timeout=2)
         cur = conn.cursor()
@@ -49,4 +53,4 @@ def main():
     exit(0 if all_healthy else 1)
 
 if __name__ == "__main__":
-    main() 
+    main()
