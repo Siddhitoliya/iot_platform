@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Redis Streams processor with DLQ support
+Redis Streams processor with DLQ support for Baby Oil Dispenser
 """
 import os
 import json
@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
-STREAM_NAME = os.getenv('STREAM_NAME', 'sensor:stream')
-DLQ_STREAM = os.getenv('DLQ_STREAM', 'sensor:dlq')
-CONSUMER_GROUP = os.getenv('CONSUMER_GROUP', 'sensor-group')
+STREAM_NAME = os.getenv('STREAM_NAME', 'babyoil:stream')
+DLQ_STREAM = os.getenv('DLQ_STREAM', 'babyoil:dlq')
+CONSUMER_GROUP = os.getenv('CONSUMER_GROUP', 'babyoil-group')
 CONSUMER_NAME = os.getenv('CONSUMER_NAME', f'worker-{os.getpid()}')
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', 3))
 RETRY_DELAY = int(os.getenv('RETRY_DELAY', 30))
@@ -36,13 +36,13 @@ BLOCK_TIMEOUT = int(os.getenv('BLOCK_TIMEOUT', 5000))
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
     'port': int(os.getenv('DB_PORT', 5432)),
-    'database': os.getenv('DB_NAME', 'oxygen_data'),
+    'database': os.getenv('DB_NAME', 'baby_oil_data'),
     'user': os.getenv('DB_USER', 'pipeline'),
     'password': os.getenv('DB_PASSWORD', 'pipeline123')
 }
 
 # ============================================================================
-# Redis Streams Processor
+# Stream Processor
 # ============================================================================
 
 class StreamProcessor:
@@ -153,29 +153,86 @@ def process_message(message: Dict[str, Any]) -> bool:
         try:
             cur = conn.cursor()
             
-            sql = """
-                INSERT INTO oxygen_readings (
-                    device_id, hospital_id, facility_zone,
-                    liquid_level_percent, liquid_volume_liters,
-                    pipeline_pressure_bar, gas_purity_percentage,
-                    active_error_codes, event_time, is_anomaly
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
+            # Insert into appropriate table based on payload type
+            if 'heartbeat_id' in data:
+                # Heartbeat message
+                sql = """
+                    INSERT INTO heartbeat_history (
+                        heartbeat_id, device_id, timestamp, status, 
+                        battery, signal_strength, cpu_usage, memory_usage,
+                        session_active, errors, warnings, sequence_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                values = (
+                    data.get('heartbeat_id'),
+                    data.get('device_id'),
+                    data.get('timestamp'),
+                    data.get('status'),
+                    data.get('battery', {}).get('percent'),
+                    data.get('connectivity', {}).get('signal_strength_dbm'),
+                    data.get('health', {}).get('cpu_usage'),
+                    data.get('health', {}).get('memory_usage'),
+                    data.get('session_active', False),
+                    json.dumps(data.get('health', {}).get('errors', [])),
+                    json.dumps(data.get('health', {}).get('warnings', [])),
+                    data.get('sequence_number')
+                )
+                cur.execute(sql, values)
             
-            values = (
-                data.get('system_metadata', {}).get('device_id', 'unknown'),
-                data.get('system_metadata', {}).get('hospital_id', 'unknown'),
-                data.get('system_metadata', {}).get('facility_zone', ''),
-                data.get('tank_metrics', {}).get('liquid_level_percent', 0),
-                data.get('tank_metrics', {}).get('liquid_volume_liters', 0),
-                data.get('pipeline_distribution', {}).get('pipeline_pressure_bar', 0),
-                data.get('pipeline_distribution', {}).get('gas_purity_percentage', 0),
-                json.dumps(data.get('system_health', {}).get('active_error_codes', [])),
-                data.get('timestamp', datetime.utcnow().isoformat()),
-                len(data.get('system_health', {}).get('active_error_codes', [])) > 0
-            )
+            else:
+                # Device telemetry
+                sql = """
+                    INSERT INTO device_states (
+                        device_id, state, session_status,
+                        oil_level, oil_volume_ml, remaining_sessions,
+                        tcc_temperature, neck_ring_temperature, target_temperature,
+                        temperature_delta, tcc_sensor_ok, neck_ring_sensor_ok,
+                        sensors_agree, battery, wifi_status, ble_status,
+                        errors, warnings, last_updated
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (device_id) DO UPDATE SET
+                        state = EXCLUDED.state,
+                        session_status = EXCLUDED.session_status,
+                        oil_level = EXCLUDED.oil_level,
+                        oil_volume_ml = EXCLUDED.oil_volume_ml,
+                        remaining_sessions = EXCLUDED.remaining_sessions,
+                        tcc_temperature = EXCLUDED.tcc_temperature,
+                        neck_ring_temperature = EXCLUDED.neck_ring_temperature,
+                        target_temperature = EXCLUDED.target_temperature,
+                        temperature_delta = EXCLUDED.temperature_delta,
+                        tcc_sensor_ok = EXCLUDED.tcc_sensor_ok,
+                        neck_ring_sensor_ok = EXCLUDED.neck_ring_sensor_ok,
+                        sensors_agree = EXCLUDED.sensors_agree,
+                        battery = EXCLUDED.battery,
+                        wifi_status = EXCLUDED.wifi_status,
+                        ble_status = EXCLUDED.ble_status,
+                        errors = EXCLUDED.errors,
+                        warnings = EXCLUDED.warnings,
+                        last_updated = EXCLUDED.last_updated
+                """
+                values = (
+                    data.get('device_id'),
+                    data.get('state'),
+                    data.get('session_status'),
+                    data.get('oil_level_percent'),
+                    data.get('oil_volume_ml'),
+                    data.get('remaining_sessions'),
+                    data.get('temperature', {}).get('tcc_temp'),
+                    data.get('temperature', {}).get('neck_ring_temp'),
+                    data.get('temperature', {}).get('target_temp'),
+                    data.get('temperature', {}).get('delta'),
+                    data.get('sensor_health', {}).get('tcc_sensor_ok', True),
+                    data.get('sensor_health', {}).get('neck_ring_sensor_ok', True),
+                    data.get('sensor_health', {}).get('sensors_agree', True),
+                    data.get('battery_percent'),
+                    data.get('connectivity', {}).get('wifi'),
+                    data.get('connectivity', {}).get('ble'),
+                    json.dumps(data.get('errors', [])),
+                    json.dumps(data.get('warnings', [])),
+                    datetime.utcnow()
+                )
+                cur.execute(sql, values)
             
-            cur.execute(sql, values)
             conn.commit()
             cur.close()
             conn.close()
@@ -223,6 +280,7 @@ class Worker:
                 retry_count += 1
                 if retry_count >= MAX_RETRIES:
                     self.processor.move_to_dlq(msg_id, msg_data, "Max retries exceeded", retry_count)
+                    self.processor.stats['errors'] += 1
                 else:
                     try:
                         entries = self.processor.redis.xrange(STREAM_NAME, msg_id, msg_id)

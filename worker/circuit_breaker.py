@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Circuit Breaker Pattern Implementation
 """
@@ -11,29 +12,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 class CircuitState(Enum):
-    """Circuit breaker states"""
-    CLOSED = "closed"      
-    OPEN = "open"          
-    HALF_OPEN = "half_open"  
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
 
 class CircuitBreaker:
-    """
-    Circuit breaker to prevent cascading failures
-    
-    States:
-        CLOSED: Normal operation. Count failures. If threshold reached, go to OPEN.
-        OPEN: Requests fail fast. After timeout, go to HALF_OPEN.
-        HALF_OPEN: Allow limited requests. If successful, go to CLOSED. If fail, go to OPEN.
-    """  
     def __init__(self, name: str, failure_threshold: int = 5, 
                  timeout_seconds: int = 30, half_open_max: int = 3):
-        """
-        Args:
-            name: Circuit breaker identifier
-            failure_threshold: Number of failures before opening circuit
-            timeout_seconds: Time to wait before trying again
-            half_open_max: Max requests to allow in half-open state
-        """
         self.name = name
         self.failure_threshold = failure_threshold
         self.timeout_seconds = timeout_seconds
@@ -52,11 +37,6 @@ class CircuitBreaker:
         logger.info(f"🔌 Circuit breaker '{name}' initialized (threshold={failure_threshold})")
     
     def call(self, func, *args, **kwargs):
-        """
-        Execute function with circuit breaker protection
-        
-        Returns: Tuple (success: bool, result: Any, error: Optional[str])
-        """
         if not self.is_allowed():
             return False, None, f"Circuit OPEN - {self.name}"
         
@@ -70,7 +50,6 @@ class CircuitBreaker:
             return False, None, str(e)
     
     def is_allowed(self) -> bool:
-        """Check if request is allowed"""
         with self.lock:
             if self.state == CircuitState.CLOSED:
                 return True
@@ -94,7 +73,6 @@ class CircuitBreaker:
             return False
     
     def record_success(self):
-        """Record a successful call"""
         with self.lock:
             self.total_successes += 1
             
@@ -111,7 +89,6 @@ class CircuitBreaker:
                 self.failure_count = max(0, self.failure_count - 1)
     
     def record_failure(self):
-        """Record a failed call"""
         with self.lock:
             self.total_failures += 1
             self.last_failure_time = datetime.utcnow()
@@ -130,7 +107,6 @@ class CircuitBreaker:
                 self.success_count = 0
     
     def get_status(self) -> Dict[str, Any]:
-        """Get current status"""
         with self.lock:
             return {
                 'name': self.name,
@@ -145,36 +121,18 @@ class CircuitBreaker:
             }
 
 class CircuitBreakerRegistry:
-    """Registry for managing multiple circuit breakers"""
-    
     def __init__(self):
         self.breakers: Dict[str, CircuitBreaker] = {}
         self.lock = threading.Lock()
     
     def get_or_create(self, name: str, failure_threshold: int = 5, 
                       timeout_seconds: int = 30) -> CircuitBreaker:
-        """Get existing or create new circuit breaker"""
         with self.lock:
             if name not in self.breakers:
-                self.breakers[name] = CircuitBreaker(
-                    name, failure_threshold, timeout_seconds
-                )
+                self.breakers[name] = CircuitBreaker(name, failure_threshold, timeout_seconds)
             return self.breakers[name]
     
     def get_status(self) -> Dict[str, Dict]:
-        """Get all circuit breaker statuses"""
         return {name: cb.get_status() for name, cb in self.breakers.items()}
-    
-    def reset(self, name: str):
-        """Reset a circuit breaker"""
-        if name in self.breakers:
-            self.breakers[name].state = CircuitState.CLOSED
-            self.breakers[name].failure_count = 0
-    
-    def reset_all(self):
-        """Reset all circuit breakers"""
-        for cb in self.breakers.values():
-            cb.state = CircuitState.CLOSED
-            cb.failure_count = 0
 
 circuit_breaker_registry = CircuitBreakerRegistry()
